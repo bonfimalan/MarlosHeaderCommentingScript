@@ -10,20 +10,61 @@ import java.util.Scanner;
 public class Main {
   private static final String JAVA_FILE_EXTENSION = ".java";
   private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("dd/MM/yy HH:mm");
+  private static final String PATH_TO_BACKUP = "backup/";
+  private static final String HELP_MESSAGE_ADIVICE = "(use -h to see help instructions)";
+  private static boolean clearAtEnd = false;
 
-  public static void main(String[] args) {
+  public static void main(String[] args) throws IOException {
     if (args.length == 0)
-      printAndExitProgram("No directory passed");// the path was not passed
+      printAndExitProgram("No directory passed " + HELP_MESSAGE_ADIVICE);// the path was not passed
 
-    File mainFolder = new File(args[0]);
+    String pathToRootFolder = processFlags(args);
+    File rootFolder = new File(pathToRootFolder);
 
-    if (mainFolder.isFile())
-      printAndExitProgram("You must pass a directory");
+    if (rootFolder.isFile())
+      printAndExitProgram("You must pass a directory " + HELP_MESSAGE_ADIVICE);
 
-    if (!mainFolder.exists())
-      printAndExitProgram("Directory don't exists");
+    if (!rootFolder.exists())
+      printAndExitProgram("Directory don't exists " + HELP_MESSAGE_ADIVICE);
 
-    commentJavaFiles(mainFolder);
+    commentJavaFiles(rootFolder);
+
+    // clear the backup file if the -c flag was used
+    if (clearAtEnd)
+      System.out.println(processFlagC());
+  }
+
+  public static String processFlags(String[] args) {
+    switch (args[0]) {
+      case "-c":
+        // comment files than clear the backup directory
+        if (args.length > 1) {
+          clearAtEnd = true;
+          return args[1];
+        }
+        // clear the backup directory and exit
+        String message = processFlagC();
+        printAndExitProgram(message);
+        break;
+      case "-h":
+        printAndExitProgram(processFlagH());
+        break;
+    }
+    return args[0];
+  }
+
+  public static String processFlagH() {
+    return "\t-h \t\t\t\t HELP!!\n" +
+        "\t-c <target directory path> \t Comment java files and clear the backup directory\n" +
+        "\t-c \t\t\t\t Clear the backup directory\n" +
+        "\t<target directory path> \t Comment java files\n";
+  }
+
+  public static String processFlagC() {
+    if (clearBackupFolder())
+      return "Backup folder cleared";
+    else
+      return "Backup folder not cleared";
   }
 
   public static void printAndExitProgram(String message) {
@@ -62,32 +103,70 @@ public class Main {
     }
   }
 
-  public static void writeNewFile(String header, File oldFile) {
+  public static void writeNewFile(String header, File targetFile) {
     try {
-      Scanner scanner = new Scanner(oldFile);
+      // save the file in a backup and uses the backup to add the header
+      File backupFile = saveInBackup(targetFile);
+      Scanner scanner = new Scanner(targetFile);
 
+      // verifies if the file has already a header comment
       String firstLine = scanner.nextLine();
-      if(hasHeaderComment(firstLine)) {
+      if (hasHeaderComment(firstLine)) {
         scanner.close();
         return;
       }
+      scanner.close(); // closes the scanner, it was only used to check the first line
 
-      System.out.println("Adding header to " + oldFile.getName());
+      // creates a new Scanner with the backup file instead of the original file
+      scanner = new Scanner(backupFile);
+      System.out.println("Adding header to " + targetFile.getName());
 
-      File newFile = new File(oldFile.getAbsolutePath());
-      FileWriter fileWriter = new FileWriter(newFile);
-      fileWriter.write(header);
-      fileWriter.write(firstLine + "\n");
-      
+      // creates a FileWriter to save the header and copy the lines of the backup in
+      // it
+      FileWriter fileWriter = new FileWriter(targetFile);
+      fileWriter.write(header); // write the header
 
+      // copies the lines from the backup file in the file
       while (scanner.hasNextLine()) {
         fileWriter.write(scanner.nextLine() + "\n");
       }
-      
+
       fileWriter.close();
       scanner.close();
     } catch (Exception e) {
     }
+  }
+
+  public static File saveInBackup(File file) {
+    try {
+      File backupFile = new File(PATH_TO_BACKUP + file.getName());
+      backupFile.createNewFile();
+      FileWriter fileWriter = new FileWriter(backupFile);
+
+      Scanner scanner = new Scanner(file);
+
+      while (scanner.hasNextLine()) {
+        fileWriter.write(scanner.nextLine() + "\n");
+      }
+
+      fileWriter.close();
+      scanner.close();
+
+      return backupFile;
+    } catch (Exception e) {
+      return null;
+    }
+  }
+
+  public static boolean clearBackupFolder() {
+    boolean isBackupCleared = true;
+    File backupDirectory = new File(PATH_TO_BACKUP);
+    for (File backupFile : backupDirectory.listFiles()) {
+      // if one file could not be deleted it will return false
+      isBackupCleared = isBackupCleared && backupFile.delete();
+    }
+
+    return isBackupCleared;
   }
 
   public static String formatDate(FileTime fileTime) {
